@@ -1,0 +1,6 @@
+Raw rows: 119,390
+Rows after shared cleaning: 118,563 (duplicates kept)
+Exact duplicate rows still present: 31,926
+Arrival dates: 2015-07-01 to 2017-08-31
+Cancellation rate: 37.3%
+Rows per hotel: City Hotel: 78,898, Resort Hotel: 39,665
