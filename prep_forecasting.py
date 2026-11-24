@@ -17,24 +17,30 @@ LAGS = (1, 7, 14, 28)
 ROLLING_WINDOWS = (7, 14, 28)
 
 
-def build_series(df: pd.DataFrame, hotel: str) -> pd.DataFrame:
-    """Aggregate bookings and room nights by arrival date for one hotel.
+def build_series(df: pd.DataFrame, hotel: str | None = None) -> pd.DataFrame:
+    """Aggregate bookings and room nights by arrival date.
 
-    Dates without arrivals are included with zero values in both target columns.
+    When ``hotel`` is provided, only that hotel is included. Otherwise the
+    series combines all hotels. Dates without arrivals are zero-filled.
     """
     required = {"hotel", "arrival_date", "total_stay_nights"}
     missing = required.difference(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {sorted(missing)}")
 
-    hotel_df = df.loc[df["hotel"].eq(hotel), ["arrival_date", "total_stay_nights"]].copy()
+    hotel_df = df.loc[
+        df["hotel"].eq(hotel) if hotel is not None else slice(None),
+        ["arrival_date", "total_stay_nights"],
+    ].copy()
     if hotel_df.empty:
-        raise ValueError(f"No bookings found for hotel '{hotel}'")
+        series_label = hotel if hotel is not None else "all hotels"
+        raise ValueError(f"No bookings found for '{series_label}'")
 
     hotel_df["arrival_date"] = pd.to_datetime(hotel_df["arrival_date"], errors="coerce")
     hotel_df = hotel_df.dropna(subset=["arrival_date"])
     if hotel_df.empty:
-        raise ValueError(f"No valid arrival dates found for hotel '{hotel}'")
+        series_label = hotel if hotel is not None else "all hotels"
+        raise ValueError(f"No valid arrival dates found for '{series_label}'")
 
     series = hotel_df.groupby("arrival_date").agg(
         y_bookings=("total_stay_nights", "size"),
@@ -69,7 +75,17 @@ def make_features(series: pd.DataFrame) -> pd.DataFrame:
     for window in ROLLING_WINDOWS:
         f[f"f_bookings_rolling_mean_{window}"] = bookings.shift(1).rolling(window=window).mean()
 
-    return f
+    return f.dropna()
+
+def split_and_save(features: pd.DataFrame, slug: str, out_dir: str, test_ratio: float = 0.20):
+    """Splits the data chronologically into train and test sets and saves them."""
+    cutoff = features.index[int(len(features) * (1 - test_ratio))]
+    train = features[features.index < cutoff]
+    test = features[features.index >= cutoff]
+    
+    train.to_csv(os.path.join(out_dir, f"ts_{slug}_features_train.csv"), index_label="arrival_date")
+    test.to_csv(os.path.join(out_dir, f"ts_{slug}_features_test.csv"), index_label="arrival_date")
+    logging.info(f"Split {slug}: Train ends {train.index[-1].date()}, Test starts {test.index[0].date()}")
 
 
 def main() -> None:
@@ -88,13 +104,21 @@ def main() -> None:
     if "hotel" not in df:
         raise ValueError("Input CSV is missing required column 'hotel'")
 
-    for hotel in sorted(df["hotel"].dropna().unique()):
+    series = (
+        ("city", "City Hotel"),
+        ("all", None),
+        ("resort", "Resort Hotel"),
+    )
+    for slug, hotel in series:
         features = make_features(build_series(df, hotel))
-        features.insert(0, "hotel", hotel)
-        slug = hotel.lower().replace(" ", "_")
+        # Save the full dataset
         path = os.path.join(args.out_dir, f"forecasting_{slug}.csv")
         features.to_csv(path, index_label="arrival_date")
-        logging.info("Saved %s (%s rows, %s columns)", path, len(features), len(features.columns))
+        
+        # Split and save train/test files for ML models
+        split_and_save(features, slug, args.out_dir)
+        
+        logging.info("Processed %s (%s rows, %s columns)", path, len(features), len(features.columns))
 
 
 if __name__ == "__main__":
