@@ -1,10 +1,12 @@
-"""Train XGBoost and Random Forest models for each hotel booking series."""
+"""Train XGBoost and Random Forest models for each hotel booking series and evaluate metrics."""
 import argparse
 import logging
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from xgboost import XGBRegressor
 
 
@@ -13,6 +15,17 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 SERIES_NAMES = ("city", "all", "resort")
 TARGET_COLUMNS = ("y_bookings", "y_room_nights")
 DATE_COLUMNS = ("Date", "date", "arrival_date", "ds")
+
+
+def calculate_mase(y_test: pd.Series, y_pred: pd.Series, y_train: pd.Series) -> float:
+    """Calculate Mean Absolute Scaled Error (MASE)."""
+    mae_test = mean_absolute_error(y_test, y_pred)
+    # Naive forecast on training data: predicting today using yesterday's value
+    mae_naive_train = mean_absolute_error(y_train.iloc[1:], y_train.iloc[:-1])
+    
+    if mae_naive_train == 0:
+        return np.nan
+    return mae_test / mae_naive_train
 
 
 def load_features(path: Path) -> pd.DataFrame:
@@ -36,8 +49,8 @@ def load_features(path: Path) -> pd.DataFrame:
     return frame
 
 
-def train_series(series_name: str, data_dir: Path, output_dir: Path) -> Path:
-    """Fit both regressors for one series and save actuals with predictions."""
+def train_series(series_name: str, data_dir: Path, output_dir: Path) -> list[dict]:
+    """Fit regressors, save predictions, and calculate evaluation metrics."""
     train_path = data_dir / f"ts_{series_name}_features_train.csv"
     test_path = data_dir / f"ts_{series_name}_features_test.csv"
     for path in (train_path, test_path):
@@ -56,6 +69,7 @@ def train_series(series_name: str, data_dir: Path, output_dir: Path) -> Path:
     X_train = train[feature_columns].apply(pd.to_numeric, errors="raise")
     y_train = pd.to_numeric(train["y_bookings"], errors="raise")
     X_test = test[feature_columns].apply(pd.to_numeric, errors="raise")
+    y_test = pd.to_numeric(test["y_bookings"], errors="raise")
 
     # Lag and rolling features can be undefined at the beginning of a series.
     valid_train = X_train.notna().all(axis=1) & y_train.notna()
@@ -67,22 +81,30 @@ def train_series(series_name: str, data_dir: Path, output_dir: Path) -> Path:
     if X_test.isna().any().any():
         raise ValueError(f"Test features in {test_path} contain missing values")
 
+    # OPTIMIZED MODELS
     xgb_model = XGBRegressor(
         objective="reg:squarederror",
         n_estimators=300,
+        learning_rate=0.05,     # Slows down the learning so the model doesn't overreact to outliers
+        max_depth=5,            # Caps tree size so it finds general trends, not hyper-specific noise
+        subsample=0.8,          # Uses 80% of data per tree to increase randomness and prevent overfitting
         random_state=42,
         n_jobs=-1,
     )
+    
     rf_model = RandomForestRegressor(
         n_estimators=300,
+        max_depth=15,           # Stops trees from growing infinitely deep and memorizing the training data
+        min_samples_leaf=2,     # Requires at least 2 days of data to make a final branch decision
         random_state=42,
         n_jobs=-1,
     )
+    
     xgb_model.fit(X_train, y_train)
     rf_model.fit(X_train, y_train)
 
     predictions = pd.DataFrame(index=test.index)
-    predictions["y_bookings"] = test["y_bookings"]
+    predictions["y_bookings"] = y_test
     predictions["y_room_nights"] = test["y_room_nights"]
     predictions["pred_xgboost"] = xgb_model.predict(X_test)
     predictions["pred_rf"] = rf_model.predict(X_test)
@@ -96,7 +118,25 @@ def train_series(series_name: str, data_dir: Path, output_dir: Path) -> Path:
         len(predictions),
         dropped_rows,
     )
-    return output_path
+
+    # Calculate metrics for this series
+    metrics = []
+    models = [("XGBoost", "pred_xgboost"), ("Random Forest", "pred_rf")]
+    for model_name, pred_col in models:
+        y_pred = predictions[pred_col]
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        mase = calculate_mase(y_test, y_pred, y_train)
+
+        metrics.append({
+            "Hotel": series_name.capitalize(),
+            "Model": model_name,
+            "MAE": mae,
+            "RMSE": rmse,
+            "MASE": mase
+        })
+
+    return metrics
 
 
 def main() -> None:
@@ -109,8 +149,19 @@ def main() -> None:
                         help="Series to train (default: city all resort)")
     args = parser.parse_args()
 
+    all_metrics = []
     for series_name in args.series:
-        train_series(series_name, args.data_dir, args.out_dir)
+        series_metrics = train_series(series_name, args.data_dir, args.out_dir)
+        all_metrics.extend(series_metrics)
+
+    if all_metrics:
+        df_metrics = pd.DataFrame(all_metrics).round(2)
+        print("\n--- Forecast Evaluation Metrics ---")
+        print(df_metrics.to_string(index=False))
+        
+        metrics_path = args.out_dir / "evaluation_metrics.csv"
+        df_metrics.to_csv(metrics_path, index=False)
+        logging.info("Saved combined metrics table to %s", metrics_path)
 
 
 if __name__ == "__main__":
