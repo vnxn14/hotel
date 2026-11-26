@@ -1,0 +1,6 @@
+[all] ADF p-value: raw 0.079 | d=1 0.000 | seasonal diff (lag 7) 0.000
+[all] SARIMAX order (2, 0, 2) x (1, 1, 1, 7) + Fourier K=3 (AIC 6414.8)
+[city] ADF p-value: raw 0.080 | d=1 0.000 | seasonal diff (lag 7) 0.000
+[city] SARIMAX order (2, 0, 2) x (0, 1, 1, 7) + Fourier K=3 (AIC 6204.4)
+[resort] ADF p-value: raw 0.002 | d=1 0.000 | seasonal diff (lag 7) 0.000
+[resort] SARIMAX order (2, 0, 2) x (0, 1, 1, 7) + Fourier K=3 (AIC 5438.5)
