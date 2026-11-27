@@ -1,13 +1,13 @@
 key,model,MAE,RMSE,MASE
-all,Seasonal Naive (weekly),44.699,58.526,0.899
+all,Seasonal Naive (weekly),46.359,60.045,0.932
 all,Seasonal Naive (yearly),49.392,61.516,0.993
-all,SARIMAX,32.864,42.393,0.661
-all,Prophet,39.153,47.071,0.787
-city,Seasonal Naive (weekly),37.105,50.416,0.9
+all,SARIMAX,33.454,43.488,0.673
+all,Prophet,37.389,50.503,0.752
+city,Seasonal Naive (weekly),38.843,52.188,0.942
 city,Seasonal Naive (yearly),40.536,52.512,0.983
-city,SARIMAX,27.63,37.02,0.67
-city,Prophet,34.932,42.55,0.847
-resort,Seasonal Naive (weekly),18.928,24.547,0.905
+city,SARIMAX,28.081,37.667,0.681
+city,Prophet,31.657,44.073,0.768
+resort,Seasonal Naive (weekly),19.359,26.826,0.925
 resort,Seasonal Naive (yearly),21.222,27.672,1.014
-resort,SARIMAX,14.921,20.037,0.713
-resort,Prophet,15.149,20.203,0.724
+resort,SARIMAX,14.382,19.625,0.687
+resort,Prophet,13.716,19.269,0.656

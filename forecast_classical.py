@@ -9,8 +9,9 @@ Outputs:
     diagnostics.txt     Training-series diagnostics and selected SARIMAX orders
     plots/              Diagnostics and forecast comparison plots
 
-The last ``test_ratio`` of dates is held out. Each model forecasts that full
-test window without refitting on test observations.
+The last ``test_ratio`` of dates is held out. Forecasts are made one day at a
+time; after each prediction, that day's actual value is added to the history
+before forecasting the next day.
 """
 import argparse
 import itertools
@@ -110,7 +111,8 @@ def save_diagnostics(train: pd.Series, key: str, plot_dir: Path, log_lines: list
     weekday_means = train.groupby(train.index.dayofweek).mean()
     month_means = train.groupby(train.index.month).mean()
     fig, axes = plt.subplots(1, 2, figsize=(11, 3.5))
-    axes[0].bar(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], weekday_means.values)
+    axes[0].bar(np.arange(7), weekday_means.reindex(range(7)).values)
+    axes[0].set_xticks(np.arange(7), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
     axes[0].set_title("Average bookings by weekday")
     axes[1].bar(month_means.index, month_means.values)
     axes[1].set_title("Average bookings by month (training period)")
@@ -120,15 +122,15 @@ def save_diagnostics(train: pd.Series, key: str, plot_dir: Path, log_lines: list
 
 
 # Forecast models
-def seasonal_naive(train: pd.Series, test_index: pd.DatetimeIndex, period: int) -> pd.DataFrame:
-    """Repeat the most recent training observation from the same seasonal position."""
-    last_train_date = train.index[-1]
+def seasonal_naive(train: pd.Series, test: pd.Series, period: int) -> pd.DataFrame:
+    """Forecast each day from the actual observation one season earlier."""
+    history = train.copy()
     forecasts = []
-    for date in test_index:
-        periods_back = int(np.ceil((date - last_train_date).days / period))
-        source_date = date - pd.Timedelta(days=periods_back * period)
-        forecasts.append(train.loc[source_date])
-    return pd.DataFrame({"yhat": forecasts}, index=test_index)
+    for date, actual in test.items():
+        source_date = date - pd.Timedelta(days=period)
+        forecasts.append(history.loc[source_date])
+        history.loc[date] = actual
+    return pd.DataFrame({"yhat": forecasts}, index=test.index)
 
 
 def fourier_features(index: pd.DatetimeIndex, k: int = FOURIER_K) -> pd.DataFrame:
@@ -144,13 +146,13 @@ def fourier_features(index: pd.DatetimeIndex, k: int = FOURIER_K) -> pd.DataFram
 
 def fit_sarimax(
     train: pd.Series,
-    test_index: pd.DatetimeIndex,
+    test: pd.Series,
     log_lines: list[str],
     key: str,
 ) -> pd.DataFrame:
-    """Choose a small SARIMAX specification by training AIC and forecast the test window."""
+    """Choose parameters by training AIC, then refit/update one day at a time."""
     exog_train = fourier_features(train.index)
-    exog_test = fourier_features(test_index)
+    exog_test = fourier_features(test.index)
     best = None
 
     for order, seasonal_order in itertools.product(SARIMA_ORDERS, SEASONAL_ORDERS):
@@ -175,49 +177,49 @@ def fit_sarimax(
     log_lines.append(
         f"[{key}] SARIMAX order {order} x {seasonal_order} + Fourier K={FOURIER_K} (AIC {aic:.1f})"
     )
-    forecast = result.get_forecast(steps=len(test_index), exog=exog_test)
-    interval = forecast.conf_int(alpha=0.05)
-    return pd.DataFrame(
-        {
-            "yhat": forecast.predicted_mean.to_numpy(),
-            "lower": interval.iloc[:, 0].to_numpy(),
-            "upper": interval.iloc[:, 1].to_numpy(),
-        },
-        index=test_index,
-    )
+    forecasts = []
+    for date, actual in test.items():
+        one_step = result.get_forecast(steps=1, exog=exog_test.loc[[date]])
+        interval = one_step.conf_int(alpha=0.05).iloc[0]
+        forecasts.append((float(one_step.predicted_mean.iloc[0]), float(interval.iloc[0]), float(interval.iloc[1])))
+        new_observation = pd.Series([actual], index=[date], name=train.name)
+        result = result.append(new_observation, exog=exog_test.loc[[date]], refit=False)
+    return pd.DataFrame(forecasts, columns=["yhat", "lower", "upper"], index=test.index)
 
 
 def fit_prophet(
     train: pd.Series,
-    test_index: pd.DatetimeIndex,
+    test: pd.Series,
     holidays: str,
 ) -> pd.DataFrame:
-    """Fit Prophet with weekly/yearly seasonality and return its 95% forecast interval."""
+    """Update Prophet with each observed test day before predicting the next day."""
     try:
         from prophet import Prophet
     except ImportError as exc:
         raise ImportError("Prophet is required. Install it with `python -m pip install prophet`.") from exc
 
     model = Prophet(
-        interval_width=0.95,
-        weekly_seasonality=True,
-        yearly_seasonality=True,
-        daily_seasonality=False,
+    interval_width=0.95,
+    weekly_seasonality=True,
+    yearly_seasonality=False,
+    daily_seasonality=False,
     )
     if holidays:
         model.add_country_holidays(country_name=holidays)
 
     training_frame = pd.DataFrame({"ds": train.index, "y": train.values})
     model.fit(training_frame)
-    forecast = model.predict(pd.DataFrame({"ds": test_index}))
-    return pd.DataFrame(
-        {
-            "yhat": forecast["yhat"].to_numpy(),
-            "lower": forecast["yhat_lower"].to_numpy(),
-            "upper": forecast["yhat_upper"].to_numpy(),
-        },
-        index=test_index,
-    )
+    rows = []
+    history = training_frame.copy()
+    for date, test_value in test.items():
+        forecast = model.predict(pd.DataFrame({"ds": [date]})).iloc[0]
+        rows.append((forecast["yhat"], forecast["yhat_lower"], forecast["yhat_upper"]))
+        history = pd.concat([history, pd.DataFrame({"ds": [date], "y": [test_value]})])
+        model = Prophet(interval_width=0.95, weekly_seasonality=True, yearly_seasonality=False, daily_seasonality=False)
+        if holidays:
+            model.add_country_holidays(country_name=holidays)
+        model.fit(history)
+    return pd.DataFrame(rows, columns=["yhat", "lower", "upper"], index=test.index)
 
 
 # Run and save one series
@@ -240,10 +242,10 @@ def run_series(
     save_diagnostics(train, key, plot_dir, log_lines)
 
     forecasts = {
-        "Seasonal Naive (weekly)": seasonal_naive(train, test.index, WEEK),
-        "Seasonal Naive (yearly)": seasonal_naive(train, test.index, 365),
-        "SARIMAX": fit_sarimax(train, test.index, log_lines, key),
-        "Prophet": fit_prophet(train, test.index, holidays),
+        "Seasonal Naive (weekly)": seasonal_naive(train, test, WEEK),
+        "Seasonal Naive (yearly)": seasonal_naive(train, test, 365),
+        "SARIMAX": fit_sarimax(train, test, log_lines, key),
+        "Prophet": fit_prophet(train, test, holidays),
     }
 
     metric_rows = []
