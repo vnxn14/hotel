@@ -1,0 +1,31 @@
+{
+    "model": "CatBoost",
+    "version": "Tuned V1",
+    "best_parameters": {
+        "learning_rate": 0.05,
+        "l2_leaf_reg": 7,
+        "iterations": 500,
+        "depth": 8
+    },
+    "best_cv_f1": 0.7179210887490464,
+    "cv_method": "StratifiedGroupKFold",
+    "cv_folds": 3,
+    "n_iter": 8,
+    "tuning_time_seconds": 528.3820747999707,
+    "validation_metrics": {
+        "Accuracy": 0.8129205921938089,
+        "Precision": 0.8102840170781511,
+        "Recall": 0.6535409492438988,
+        "F1-score": 0.7235206364992541,
+        "ROC-AUC": 0.8960001711350276,
+        "PR-AUC": 0.8619290628415949
+    },
+    "baseline_validation_metrics": {
+        "Accuracy": 0.7988447734410049,
+        "Precision": 0.7971933871587851,
+        "Recall": 0.6209013325348106,
+        "F1-score": 0.698089386415285,
+        "ROC-AUC": 0.8902195177243628,
+        "PR-AUC": 0.85382026186779
+    }
+}

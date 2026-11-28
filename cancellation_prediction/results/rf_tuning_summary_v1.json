@@ -1,0 +1,22 @@
+{
+    "model": "Random Forest",
+    "version": "Tuned V1",
+    "best_parameters": {
+        "classifier__n_estimators": 150,
+        "classifier__min_samples_split": 10,
+        "classifier__min_samples_leaf": 1,
+        "classifier__max_depth": 20,
+        "classifier__class_weight": "balanced_subsample"
+    },
+    "best_cv_f1": 0.7405869013911227,
+    "validation_metrics": {
+        "Accuracy": 0.8024338268281741,
+        "Precision": 0.7189841798501249,
+        "Recall": 0.775714927384339,
+        "F1-score": 0.7462729564277998,
+        "ROC-AUC": 0.8919981648224969,
+        "PR-AUC": 0.8579558327228252
+    },
+    "tuning_time_seconds": 130.76167829998303,
+    "inference_time_seconds": 0.2725540000246838
+}

@@ -356,22 +356,3 @@ print("\nEpochs Trained:", len(ann_history.history["loss"]))
 print("Training Time:", round(ann_training_time, 3), "seconds")
 print("Inference Time:", round(ann_inference_time, 3), "seconds")
 
-
-
-
-
-# ==========================================
-# STEP 16A: CHECK CSV DATA INTEGRITY
-# ==========================================
-
-print("\nCSV Data Integrity Check:")
-
-for name, data in [
-    ("Training", X_train),
-    ("Validation", X_val)
-]:
-    print(f"\n{name} Dataset:")
-    print("Missing country values:", data["country"].isna().sum())
-    print("Country 'NA' count:", (data["country"] == "NA").sum())
-    print("Missing values by column:")
-    print(data.isna().sum()[data.isna().sum() > 0])

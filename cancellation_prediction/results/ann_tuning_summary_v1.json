@@ -1,0 +1,13 @@
+{
+    "best_config": {
+        "hidden_units": [
+            64,
+            32
+        ],
+        "dropout_rate": 0.0,
+        "learning_rate": 0.001,
+        "batch_size": 64
+    },
+    "best_epoch": 6,
+    "internal_validation_f1": 0.7264095944032648
+}
