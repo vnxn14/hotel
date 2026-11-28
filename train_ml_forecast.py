@@ -103,6 +103,20 @@ def train_series(series_name: str, data_dir: Path, output_dir: Path) -> list[dic
     xgb_model.fit(X_train, y_train)
     rf_model.fit(X_train, y_train)
 
+    # Save Feature Importance for XGBoost
+    xgb_importance = pd.DataFrame({
+        'Feature': X_train.columns,
+        'Importance': xgb_model.feature_importances_
+    }).sort_values(by='Importance', ascending=False)
+    xgb_importance.to_csv(output_dir / f"feature_importance_xgb_{series_name}.csv", index=False)
+
+    # Save Feature Importance for Random Forest
+    rf_importance = pd.DataFrame({
+        'Feature': X_train.columns,
+        'Importance': rf_model.feature_importances_
+    }).sort_values(by='Importance', ascending=False)
+    rf_importance.to_csv(output_dir / f"feature_importance_rf_{series_name}.csv", index=False)
+
     predictions = pd.DataFrame(index=test.index)
     predictions["y_bookings"] = y_test
     predictions["y_room_nights"] = test["y_room_nights"]

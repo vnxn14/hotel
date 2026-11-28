@@ -1,0 +1,14 @@
+Feature,Importance
+f_bookings_rolling_mean_14,0.1830986
+f_bookings_rolling_mean_7,0.15608224
+f_bookings_rolling_mean_28,0.10208536
+f_bookings_lag_28,0.10153078
+f_bookings_lag_14,0.09689274
+f_bookings_lag_7,0.07957287
+f_bookings_lag_1,0.07897321
+time_idx,0.075953506
+f_day_of_year,0.05947781
+f_day_of_week,0.055991758
+f_month,0.010341073
+f_is_weekend,0.0
+f_quarter,0.0
